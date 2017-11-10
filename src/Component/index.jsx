@@ -1,9 +1,10 @@
 import React, {Component, PropTypes} from 'react';
-import pureRender from 'pure-render-decorator';
+// import pureRender from 'pure-render-decorator';
 import {History, Link } from 'react-router';
 import { connect } from 'react-redux';
+import StellarSdk from 'stellar-sdk';
 import { is, fromJS} from 'immutable';
-import {Tool} from '../Config/Tool';
+import {Tool} from '../Config/Tool';//弹层
 import {Header,template} from './common/mixin';
 
 
@@ -54,44 +55,95 @@ class Main extends Component {
                 })
             }
         }
-
+        // 提交
         this.postInform = () => {
-            if (this.state.destination == '') {
+            if (this.state.destination == '1') {
                 Tool.alert('请输入1');
-            }else if (this.state.asset == '') {
-                Tool.alert('请输入2');
-            }else if (this.state.lssuer == ''||!/^1\d{10}$/.test(this.state.lssuer)) {
-                Tool.alert('请输入3');
-            }else if (this.state.postProduct.length == 0) {
-                Tool.alert('请选择4');
-            }else if (this.state.picSrc !== ''&&this.state.serverId == '') {
-                Tool.alert('图片上传失败，请重新上传图片');
-            }else if (this.state.serverId == '') {
-                Tool.alert('请上传售卖发票凭证');
-            }else{
+            }
+            // else if (this.state.asset == '') {
+            //     Tool.alert('请输入2');
+            // }else if (this.state.lssuer == ''||!/^1\d{10}$/.test(this.state.lssuer)) {
+            //     Tool.alert('请输入3');
+            // }else if (this.state.postProduct.length == 0) {
+            //     Tool.alert('请选择4');
+            // }else if (this.state.picSrc !== ''&&this.state.serverId == '') {
+            //     Tool.alert('图片上传失败，请重新上传图片');
+            // }else if (this.state.serverId == '') {
+            //     Tool.alert('请上传售卖发票凭证');
+            // }
+            else{
                 if (this.state.postProduct instanceof Object) {
                     this.state.postProduct = JSON.stringify(this.state.postProduct);
                 }
                 if (this.state.preventMountSubmit) {
-                    this.state.preventMountSubmit == false;
-                    this.props.getData('/sales/sales/input',{sales_money:this.state.destination,customers_name :this.state.asset,customers_phone :this.state.lssuer,products :this.state.postProduct,invoice_ids :this.state.serverId},(res) => {
-                        if (res.http_code == 200) {
-                            Tool.alert(res.data.msg);
-                            this.setState({
-                                destination:'',
-                                name:'',
-                                phone:'',
-                                products:[],
-                                serverId:'',
-                                picSrc:'',
-                                postProduct:[],
-                                preventMountSubmit:true
-                            })
-                        }else{
-                            this.state.preventMountSubmit = true;
-                            Tool.alert(res.msg)
-                        }
-                    },'input')
+                    const state =  this.state;
+                    state.preventMountSubmit == false;
+
+                    StellarSdk.Network.useTestNetwork();
+                    var server = new StellarSdk.Server('https://horizon-testnet.stellar.org');
+                    var sourceKeys = StellarSdk.Keypair
+                    .fromSecret('SCZUS5PRU4ZVDO3LSJEH2JSQ6MOXBVHRGMKNVXQJJXXEJFWPPIJSMAJO');
+                    var destinationId = 'GA2C5RFPE6GCKMY3US5PAB6UZLKIGSPIUKSLRB6Q723BM2OARMDUYEJ5';
+                    // First, check to make sure that the destination account exists.
+                    // You could skip this, but if the account does not exist, you will be charged
+                    // the transaction fee when the transaction fails.
+                    server.loadAccount(destinationId)
+                    // If the account is not found, surface a nicer error message for logging.
+                    .catch(StellarSdk.NotFoundError, function (error) {
+                        throw new Error('The destination account does not exist!');
+                    })
+                    // If there was no error, load up-to-date information on your account.
+                    .then(function() {
+                        console.log("1");
+                        return server.loadAccount(sourceKeys.publicKey());
+                        console.log("2");
+                    })
+                    .then(function(sourceAccount) {
+                        // Start building the transaction.
+                        var transaction = new StellarSdk.TransactionBuilder(sourceAccount)
+                        .addOperation(StellarSdk.Operation.payment({
+                            destination: destinationId,
+                            // Because Stellar allows transaction in many currencies, you must
+                            // specify the asset type. The special "native" asset represents Lumens.
+                            asset: StellarSdk.Asset.native(),
+                            amount: "10"
+                        }))
+                        // A memo allows you to add your own metadata to a transaction. It's
+                        // optional and does not affect how Stellar treats the transaction.
+                        .addMemo(StellarSdk.Memo.text('Test Transaction'))
+                        .build();
+                        console.log("3");
+                        // Sign the transaction to prove you are actually the person sending it.
+                        transaction.sign(sourceKeys);
+                        console.log("1");
+                        // And finally, send it off to Stellar!
+                        return server.submitTransaction(transaction);
+                    })
+                    .then(function(result) {
+                        state.preventMountSubmit == true;
+                        Tool.alert('Success! Results:', result);
+                    })
+                    .catch(function(error) {
+                        console.error('Something went wrong!', error);
+                    });
+                    // this.props.getData('/sales/sales/input',{sales_money:this.state.destination,customers_name :this.state.asset,customers_phone :this.state.lssuer,products :this.state.postProduct,invoice_ids :this.state.serverId},(res) => {
+                    //     if (res.http_code == 200) {
+                    //         Tool.alert(res.data.msg);
+                    //         this.setState({
+                    //             destination:'',
+                    //             name:'',
+                    //             phone:'',
+                    //             products:[],
+                    //             serverId:'',
+                    //             picSrc:'',
+                    //             postProduct:[],
+                    //             preventMountSubmit:true
+                    //         })
+                    //     }else{
+                    //         this.state.preventMountSubmit = true;
+                    //         Tool.alert(res.msg)
+                    //     }
+                    // },'input')
                 }
             }
         }
@@ -123,10 +175,24 @@ class Main extends Component {
         this.state.amount = params.amount||'';
         this.state.memo = params.memo||'';
         this.state.serverId = params.serverId||'';
+
+       
+
     }
    
     render() {
         let products = this.state.products;
+        let button = null;
+        if(this.state.preventMountSubmit){
+            button = <div className='submit' onClick={this.postInform}>
+                    提交
+            </div>
+        }
+        else{
+            button = <div className='submit'>
+                    交易处理中...
+            </div>
+        }
         return (
             <div className="component_container index_module">
                 
@@ -157,7 +223,9 @@ class Main extends Component {
                         <input type="text" maxLength='11' value={this.state.memo} placeholder='' onChange={this.changeValue.bind(this,'memo')}/>
                     </div>
                 </form>
-
+                <div>
+                    
+                </div>
                 {/* <div className='index_tip'>
                     <span className='tip_text'>请选择销售的产品</span>
                 </div>
@@ -188,10 +256,8 @@ class Main extends Component {
                     <span className='choose_button'>请点击上传凭证</span>
                 </div>
                 } */}
+                {button}
                 
-                <div className='submit' onClick={this.postInform}>
-                    提交
-                </div>
             </div>
         )
     }
